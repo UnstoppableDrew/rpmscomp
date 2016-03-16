@@ -32,6 +32,7 @@ my $opt_help = "";
 my $opt_ignorearch = "";
 my $opt_output = "";
 my $opt_verbose = "";
+my $opt_missing = "";
 
 my @hosts;
 
@@ -73,6 +74,7 @@ specified files.
   -h, --help         Print this help message and exit
 
   -d, --diffonly     Only list differences
+  -m, --missing      Only list missing RPMs
   -r, --record       Record mode (record installed RPMs for later)
   -v, --verbose      Verbose mode
 
@@ -224,11 +226,13 @@ sub print_comp {
   print "$header3\n";
   
   foreach my $name (sort(keys(%rpms))) {
-    if ($opt_diffonly) {
+    if ($opt_diffonly || $opt_missing) {
       my @installed;
+      my @qty;
       
       foreach my $host (@hosts) {
         my $all = "";
+	push (@qty, scalar keys(%{$rpm_arches{$host}{$name}}));
         foreach my $verrel (keys(%{$rpm_arches{$host}{$name}})) {
           $all .= "VER[$verrel]ARCHES[$rpm_arches{$host}{$name}{$verrel}]";
         }
@@ -236,11 +240,12 @@ sub print_comp {
       }
 
       next if (&count_unique(@installed) == 1);
+      next if ($opt_missing && (&count_unique(@qty) <= 1));
     }  
     
     if (&max(values(%{$rpm_qty{$name}})) > 1) {					# If multiple ver-rel's of the RPM are installed on at least one host...
       foreach my $verrel (sort(keys(%{$rpms{$name}}))) {			# ... we're going to go through each ver-rel of this RPM installed on hosts
-        if ($opt_diffonly) {
+        if ($opt_diffonly || $opt_missing) {
           my @installed;
           foreach my $host (@hosts) {
             push(@installed, $rpm_arches{$host}{$name}{$verrel} || "UNINSTALLED");
@@ -293,6 +298,7 @@ sub process_command_line {
     'help'       => \$opt_help,
     'html'       => \$tmp_html,
     'ignorearch' => \$opt_ignorearch,
+    'missing'    => \$opt_missing,	      
     'output=s'   => \$opt_output,
     'record'     => \$tmp_record,
     'text'       => \$tmp_text,
@@ -323,6 +329,13 @@ sub process_command_line {
   $mode = "html" if ($tmp_html);
   $mode = "record" if ($tmp_record);
   $mode = "text" if ($tmp_text);
+
+  # Check if both --diffonly and --missing were specified
+  if ($opt_diffonly && $opt_missing) {
+    print "ERROR: Mutually exclusive options specified.\n";
+    print "       Specify only one of --diffonly or --missing.\n";
+    exit 1;
+  }
 
   foreach my $host (@ARGV) {
     if ($host =~ /^.*\@.+$/) {							# If [USER]@HOST ...
